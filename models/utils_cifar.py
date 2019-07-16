@@ -39,7 +39,10 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
 from torch.nn import Parameter
+from torch.distributions.multivariate_normal import MultivariateNormal
+
 from models.model_utils import get_all_params
+from models.ali import *
 
 import os
 import sys
@@ -87,6 +90,11 @@ def train(model, trainloader, trainset, epoch, num_epochs, batch_size, lr, use_c
     total = 0
     optimizer = optim.SGD(model.parameters(), lr=learning_rate(lr, epoch), momentum=0.9, weight_decay=5e-4)
 
+    if ali:
+        D = create_ali_D()
+        D = D.cuda()
+        optimizer_D = optim.SGD(D.parameters(), lr=learning_rate(lr, epoch), momentum=0.9, weight_decay=5e-4)
+
     model_parameters = filter(lambda p: p.requires_grad, model.parameters())
     params = sum([np.prod(p.size()) for p in model_parameters])
 
@@ -98,9 +106,36 @@ def train(model, trainloader, trainset, epoch, num_epochs, batch_size, lr, use_c
         optimizer.zero_grad()
         inputs, targets = Variable(inputs), Variable(targets)
         out, out_bij = model(inputs)               # Forward Propagation
+
         loss = criterion(out, targets)  # Loss
-        loss.backward()  # Backward Propagation
-        optimizer.step()  # Optimizer update
+
+        if ali:
+            bs, ch, h, w = out_bij.shape
+            x = inputs
+            z_pred = out_bij
+            z = MultivariateNormal(torch.zeros(bs, ch, h, w), torch.eye(h)).sample().cuda()
+            x_pred = model.module.inverse(z)
+            loss_D, loss_G = compute_ali_losses(D, x, z_pred, z, x_pred)
+
+            for p in D.parameters():
+                p.requires_grad = True  # to avoid computation
+            for p in model.parameters():
+                p.requires_grad = False
+
+            optimizer_D.zero_grad()
+            loss_D.backward(retain_graph=True)
+            optimizer_D.step()  # Apply optimization step
+
+            for p in D.parameters():
+                p.requires_grad = False  # to avoid computation
+            for p in model.parameters():
+                p.requires_grad = True
+
+            loss += loss_G
+
+        optimizer.zero_grad()
+        loss.backward()     # Backward Propagation
+        optimizer.step()    # Optimizer update
 
         try:
             loss.data[0]
@@ -112,9 +147,14 @@ def train(model, trainloader, trainset, epoch, num_epochs, batch_size, lr, use_c
         correct += predicted.eq(targets.data).cpu().sum()
 
         sys.stdout.write('\r')
-        sys.stdout.write('| Epoch [%3d/%3d] Iter[%3d/%3d]\t\tLoss: %.4f Acc@1: %.3f%%'
-                         % (epoch, num_epochs, batch_idx+1,
-                            (len(trainset)//batch_size)+1, loss.data[0], 100.*correct/total))
+        if ali:
+            sys.stdout.write('| Epoch [%3d/%3d] Iter[%3d/%3d]\t\tloss_D: %.4f\tloss_G: %.4f\tAcc@1: %.3f%%'
+                             % (epoch, num_epochs, batch_idx+1,
+                                (len(trainset)//batch_size)+1, loss_D.item(), loss.data[0], 100.*correct/total))
+        else:
+            sys.stdout.write('| Epoch [%3d/%3d] Iter[%3d/%3d]\t\tLoss: %.4f Acc@1: %.3f%%'
+                             % (epoch, num_epochs, batch_idx+1,
+                                (len(trainset)//batch_size)+1, loss.data[0], 100.*correct/total))
         sys.stdout.flush()
 
 
