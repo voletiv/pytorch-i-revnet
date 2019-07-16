@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Code for "i-RevNet: Deep Invertible Networks", ICLR 2018
 # Author: Joern-Henrik Jacobsen, 2018
 #
@@ -42,6 +43,7 @@ from torch.autograd import Variable
 import torchvision
 import torchvision.transforms as transforms
 
+import datetime
 import os
 import sys
 import time
@@ -52,6 +54,8 @@ from models.iRevNet import iRevNet
 
 
 parser = argparse.ArgumentParser(description='Train i-RevNet/RevNet on Cifar')
+parser.add_argument('--data_path', default='./data', type=str, help='path to data')
+parser.add_argument('--name', default='exp1', type=str, help='name of experiment')
 parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
 parser.add_argument('--model', default='i-revnet', type=str, help='model type')
 parser.add_argument('--batch', default=128, type=int, help='batch size')
@@ -70,6 +74,7 @@ parser.add_argument('--dataset', default='cifar10', type=str, help='dataset')
 
 def main():
     args = parser.parse_args()
+    args.name = '{0:%Y%m%d_%H%M%S}_{1}_{2}'.format(datetime.datetime.now(), args.name, os.path.basename(args.data_path))
 
     transform_train = transforms.Compose([
         transforms.RandomCrop(32, padding=4),
@@ -84,13 +89,13 @@ def main():
     ])
 
     if(args.dataset == 'cifar10'):
-        trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
-        testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=False, transform=transform_test)
+        trainset = torchvision.datasets.CIFAR10(root=args.data_path, train=True, download=True, transform=transform_train)
+        testset = torchvision.datasets.CIFAR10(root=args.data_path, train=False, download=False, transform=transform_test)
         nClasses = 10
         in_shape = [3, 32, 32]
     elif(args.dataset == 'cifar100'):
-        trainset = torchvision.datasets.CIFAR100(root='./data', train=True, download=True, transform=transform_train)
-        testset = torchvision.datasets.CIFAR100(root='./data', train=False, download=False, transform=transform_test)
+        trainset = torchvision.datasets.CIFAR100(root=args.data_path, train=True, download=True, transform=transform_train)
+        testset = torchvision.datasets.CIFAR100(root=args.data_path, train=False, download=False, transform=transform_test)
         nClasses = 100
         in_shape = [3, 32, 32]
 
@@ -103,7 +108,7 @@ def main():
                             nChannels=args.nChannels, nClasses=nClasses,
                             init_ds=args.init_ds, dropout_rate=0.1, affineBN=True,
                             in_shape=in_shape, mult=args.bottleneck_mult)
-            fname = 'i-revnet-'+str(sum(args.nBlocks)+1)
+            fname = args.name + '_i-revnet-'+str(sum(args.nBlocks)+1)
         elif (args.model == 'revnet'):
             raise NotImplementedError
         else:
