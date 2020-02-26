@@ -70,7 +70,6 @@ parser.add_argument('--resume', default='', type=str, metavar='PATH',
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
                     help='evaluate model on validation set')
 parser.add_argument('--dataset', default='cifar10', type=str, help='dataset')
-parser.add_argument('--ali', action='store_true', help='to use ALI to train, or not')
 
 
 def main():
@@ -150,7 +149,7 @@ def main():
     for epoch in range(1, 1+args.epochs):
         start_time = time.time()
 
-        train(model, trainloader, trainset, epoch, args.epochs, args.batch, args.lr, use_cuda, in_shape, args.ali)
+        train(model, trainloader, trainset, epoch, args.epochs, args.batch, args.lr, use_cuda, in_shape)
         best_acc = test(model, testloader, testset, epoch, use_cuda, best_acc, args.dataset, fname)
 
         epoch_time = time.time() - start_time
