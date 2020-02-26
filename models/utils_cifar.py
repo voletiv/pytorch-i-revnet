@@ -80,7 +80,7 @@ def get_hms(seconds):
     return h, m, s
 
 
-def train(model, trainloader, trainset, epoch, num_epochs, batch_size, lr, use_cuda, in_shape, ali=False):
+def train(model, trainloader, trainset, epoch, num_epochs, batch_size, lr, use_cuda, in_shape):
     model.train()
     train_loss = 0
     correct = 0
