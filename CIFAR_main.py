@@ -37,6 +37,7 @@
 # =============================================================================
 
 import torch
+import torch.optim as optim
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 
@@ -51,6 +52,7 @@ import argparse
 
 from models.utils_cifar import train, test, std, mean, get_hms
 from models.iRevNet import iRevNet
+from models.ali import *
 
 
 parser = argparse.ArgumentParser(description='Train i-RevNet/RevNet on Cifar')
@@ -119,11 +121,19 @@ def main():
 
     model, fname = get_model(args)
 
+    if args.ali:
+        D = create_ali_D()
+        optimizer_D = optim.Adam(D.parameters(), lr=learning_rate(lr, epoch)/10)
+    else:
+        D = None
+
     use_cuda = True
     if use_cuda:
-        model.cuda()
+        model = model.cuda()
         model = torch.nn.DataParallel(model, device_ids=(0,))  # range(torch.cuda.device_count()))
         cudnn.benchmark = True
+        if args.ali:
+            D = D.cuda()
 
     # optionally resume from a checkpoint
     if args.resume:
@@ -150,7 +160,8 @@ def main():
     for epoch in range(1, 1+args.epochs):
         start_time = time.time()
 
-        train(model, trainloader, trainset, epoch, args.epochs, args.batch, args.lr, use_cuda, in_shape, args.ali)
+        train(model, trainloader, trainset, epoch, args.epochs, args.batch, args.lr, use_cuda, in_shape,
+                args.ali, D, optimizer_D)
         best_acc = test(model, testloader, testset, epoch, use_cuda, best_acc, args.dataset, fname)
 
         epoch_time = time.time() - start_time

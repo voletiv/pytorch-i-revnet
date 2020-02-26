@@ -1,3 +1,6 @@
+# https://github.com/edgarriba/ali-pytorch
+# https://github.com/IshmaelBelghazi/ALI/issues/12
+
 import torch
 import torch.nn as nn
 import torch.nn.parallel

@@ -83,17 +83,13 @@ def get_hms(seconds):
     return h, m, s
 
 
-def train(model, trainloader, trainset, epoch, num_epochs, batch_size, lr, use_cuda, in_shape, ali=False):
+def train(model, trainloader, trainset, epoch, num_epochs, batch_size, lr, use_cuda, in_shape,
+            ali=False, D=None, optimizer_D=None):
     model.train()
     train_loss = 0
     correct = 0
     total = 0
     optimizer = optim.SGD(model.parameters(), lr=learning_rate(lr, epoch), momentum=0.9, weight_decay=5e-4)
-
-    if ali:
-        D = create_ali_D()
-        D = D.cuda()
-        optimizer_D = optim.SGD(D.parameters(), lr=learning_rate(lr, epoch), momentum=0.9, weight_decay=5e-4)
 
     model_parameters = filter(lambda p: p.requires_grad, model.parameters())
     params = sum([np.prod(p.size()) for p in model_parameters])
@@ -110,52 +106,69 @@ def train(model, trainloader, trainset, epoch, num_epochs, batch_size, lr, use_c
         loss = criterion(out, targets)  # Loss
 
         if ali:
-            bs, ch, h, w = out_bij.shape
             x = inputs
             z_pred = out_bij
-            z = MultivariateNormal(torch.zeros(bs, ch, h, w), torch.eye(h)).sample().cuda()
+            try:
+                z = dist.sample()[:z_pred.shape[0]]
+                z = z.cuda()
+            except NameError:
+                bs, ch, h, w = out_bij.shape
+                dist = MultivariateNormal(torch.zeros(bs, ch, h, w), torch.eye(h))
+                z = dist.sample()[:z_pred.shape[0]]
+                z = z.cuda()
+
+            # Invert
             x_pred = model.module.inverse(z)
+
+            # Losses
             loss_D, loss_G = compute_ali_losses(D, x, z_pred, z, x_pred)
 
-            for p in D.parameters():
-                p.requires_grad = True  # to avoid computation
+            # Freeze model to train D
             for p in model.parameters():
-                p.requires_grad = False
+                p.requires_grad = False     # to avoid computation
+            for p in D.parameters():
+                p.requires_grad = True
 
+            # Train D
             optimizer_D.zero_grad()
             loss_D.backward(retain_graph=True)
             optimizer_D.step()  # Apply optimization step
 
-            for p in D.parameters():
-                p.requires_grad = False  # to avoid computation
+            # Unfreeze model, freeze D
             for p in model.parameters():
                 p.requires_grad = True
+            for p in D.parameters():
+                p.requires_grad = False     # to avoid computation
 
+            # Add loss to classification loss
             loss += loss_G
 
         optimizer.zero_grad()
         loss.backward()     # Backward Propagation
         optimizer.step()    # Optimizer update
 
-        try:
-            loss.data[0]
-        except IndexError:
-            loss.data = torch.reshape(loss.data, (1,))
-        train_loss += loss.data[0]
+        loss_val = loss.item()
+
         _, predicted = torch.max(out.data, 1)
         total += targets.size(0)
         correct += predicted.eq(targets.data).cpu().sum()
 
         sys.stdout.write('\r')
         if ali:
-            sys.stdout.write('| Epoch [%3d/%3d] Iter[%3d/%3d]\t\tloss_D: %.4f\tloss_G: %.4f\tAcc@1: %.3f%%'
-                             % (epoch, num_epochs, batch_idx+1,
-                                (len(trainset)//batch_size)+1, loss_D.item(), loss.data[0], 100.*correct/total))
+            loss_D_val = loss_D.item()
+            loss_G_val = loss_G.item()
+            sys.stdout.write('| Epoch [%3d/%3d] Iter[%3d/%3d]\tloss_D: %.4f\tloss_G: %.4f\tloss_class: %.4f\tAcc@1: %.3f%%'
+                             % (epoch, num_epochs, batch_idx+1, (len(trainset)//batch_size)+1,
+                                loss_D_val, loss_G_val, loss_val - loss_G_val, 100.*correct/total))
         else:
             sys.stdout.write('| Epoch [%3d/%3d] Iter[%3d/%3d]\t\tLoss: %.4f Acc@1: %.3f%%'
                              % (epoch, num_epochs, batch_idx+1,
-                                (len(trainset)//batch_size)+1, loss.data[0], 100.*correct/total))
+                                (len(trainset)//batch_size)+1, loss_val, 100.*correct/total))
         sys.stdout.flush()
+
+        del out, out_bij, loss
+        if ali:
+            del z, x_pred, loss_D, loss_G
 
 
 def test(model, testloader, testset, epoch, use_cuda, best_acc, dataset, fname):
