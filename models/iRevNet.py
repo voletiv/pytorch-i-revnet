@@ -18,9 +18,14 @@ class irevnet_block(nn.Module):
                  affineBN=True, mult=4):
         """ buid invertible bottleneck block """
         super(irevnet_block, self).__init__()
-        self.first = first
-        self.pad = 2 * out_ch - in_ch
+        self.in_ch = in_ch
+        self.out_ch = out_ch
         self.stride = stride
+        self.first = first
+        self.dropout_rate = dropout_rate
+        self.affineBN = affineBN
+        self.mult = mult
+        self.pad = 2 * out_ch - in_ch
         self.inj_pad = injective_pad(self.pad)
         self.psi = psi(stride)
         if self.pad != 0 and stride == 1:
@@ -84,7 +89,8 @@ class iRevNet(nn.Module):
     def __init__(self, nBlocks, nStrides, nClasses, nChannels=None, init_ds=2,
                  dropout_rate=0., affineBN=True, in_shape=None, mult=4):
         super(iRevNet, self).__init__()
-        self.ds = in_shape[2]//2**(nStrides.count(2)+init_ds//2)
+
+        self.ds = in_shape[-1]//2**(nStrides.count(2)+init_ds//2)
         self.init_ds = init_ds
         self.in_ch = in_shape[0] * 2**self.init_ds
         self.nBlocks = nBlocks

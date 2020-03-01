@@ -59,60 +59,38 @@ from models.iRevNet import iRevNet
 
 model_name = ['iRevNet']
 
-parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-parser.add_argument('--data', metavar='DIR',
-                    default='/path/to/ILSVRC2012/',
-                    help='path to dataset')
-parser.add_argument('--out_path', default='exp1', type=str, help='name of experiment')
-parser.add_argument('--arch', '-a', metavar='ARCH', default='irevnet',
-                    choices=model_name,
-                    help='model architecture: ' +
-                    ' | '.join(model_name) +
-                    ' (default: iRevNet)')
-parser.add_argument('--nBlocks', nargs='+', type=int,
-                    help='number of blocks per stage')
-parser.add_argument('--nStrides', nargs='+', type=int,
-                    help='number of strides per stage')
-parser.add_argument('--nChannels', nargs='+', type=int,
-                    help='number of channels per stage')
-parser.add_argument('--init_ds', default=2, type=int, 
-                    help='initial downsampling')
-parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
-                    help='number of data loading workers (default: 4)')
-parser.add_argument('--epochs', default=128, type=int, metavar='N',
-                    help='number of total epochs to run')
-parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
-                    help='manual epoch number (useful on restarts)')
-parser.add_argument('-b', '--batch-size', default=256, type=int,
-                    metavar='N', help='mini-batch size (default: 256)')
-parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
-                    metavar='LR', help='initial learning rate')
-parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
-                    help='momentum')
-parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
-                    metavar='W', help='weight decay (default: 1e-4)')
-parser.add_argument('--print-freq', '-p', default=10, type=int,
-                    metavar='N', help='print frequency (default: 10)')
-parser.add_argument('--resume', default='', type=str, metavar='PATH',
-                    help='path to latest checkpoint (default: none)')
-parser.add_argument('-i', '--invert', dest='invert', action='store_true',
-                    help='invert samples from validation set')
-parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
-                    help='evaluate model on validation set')
-parser.add_argument('--world-size', default=1, type=int,
-                    help='number of distributed processes')
-parser.add_argument('--dist-url', default='tcp://224.66.41.62:23456', type=str,
-                    help='url used to set up distributed training')
-parser.add_argument('--dist-backend', default='gloo', type=str,
-                    help='distributed backend')
+parser = argparse.ArgumentParser(description='PyTorch BDD Training')
+parser.add_argument('--data', metavar='DIR', help='path to dataset')
+parser.add_argument('--name', default='exp1', type=str, help='name of experiment')
+parser.add_argument('--arch', '-a', metavar='ARCH', default='irevnet', choices=model_name, help='model architecture: ' + ' | '.join(model_name) + ' (default: iRevNet)')
+parser.add_argument('--nBlocks', nargs='+', type=int, default=[10, 10, 10, 10], help='number of blocks per stage')
+parser.add_argument('--nStrides', nargs='+', type=int, default=[1, 2, 2, 1], help='number of strides per stage')
+parser.add_argument('--nChannels', nargs='+', type=int, default=[64, 256, 1024, 128], help='number of channels per stage')
+parser.add_argument('--init_ds', default=2, type=int,  help='initial downsampling')
+parser.add_argument('-j', '--workers', default=4, type=int, metavar='N', help='number of data loading workers (default: 4)')
+parser.add_argument('--epochs', default=128, type=int, metavar='N', help='number of total epochs to run')
+parser.add_argument('--start-epoch', default=0, type=int, metavar='N', help='manual epoch number (useful on restarts)')
+parser.add_argument('-b', '--batch-size', default=256, type=int, metavar='N', help='mini-batch size (default: 256)')
+parser.add_argument('--lr', '--learning-rate', default=0.1, type=float, metavar='LR', help='initial learning rate')
+parser.add_argument('--momentum', default=0.9, type=float, metavar='M', help='momentum')
+parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)')
+parser.add_argument('--print-freq', '-p', default=10, type=int, metavar='N', help='print frequency (default: 10)')
+parser.add_argument('--resume', default='', type=str, metavar='PATH', help='path to latest checkpoint (default: none)')
+parser.add_argument('-i', '--invert', dest='invert', action='store_true', help='invert samples from validation set')
+parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true', help='evaluate model on validation set')
+parser.add_argument('--world-size', default=1, type=int, help='number of distributed processes')
+parser.add_argument('--dist-url', default='tcp://224.66.41.62:23456', type=str, help='url used to set up distributed training')
+parser.add_argument('--dist-backend', default='gloo', type=str, help='distributed backend')
 
 best_prec1 = 0
 
 
 def main():
+
     global args, best_prec1
+
     args = parser.parse_args()
-    args.name = '{0:%Y%m%d_%H%M%S}_{1}_{2}'.format(datetime.datetime.now(), args.name, os.path.basename(args.data))
+    args.name = os.path.join(os.path.dirname(args.name), f'{datetime.datetime.now():%Y%m%d_%H%M%S}_{os.path.basename(args.name)}')
 
     args.distributed = args.world_size > 1
 
@@ -123,9 +101,12 @@ def main():
 
     # create model
     print("=> creating model '{}'".format(args.arch))
+    if args.nChannels is not None:
+        for i in range(len(args.nChannels) - 2):
+            assert args.nChannels[i+1] == 4 * args.nChannels[i], "Every Channel must be 4 * prev Channel! " + str(args.nChannels)
     model = iRevNet(nBlocks=args.nBlocks, nStrides=args.nStrides,
-                    nChannels=args.nChannels, nClasses=1000, init_ds=args.init_ds,
-                    dropout_rate=0., affineBN=True, in_shape=[3, 224, 224])
+                    nChannels=args.nChannels, nClasses=0, init_ds=args.init_ds,
+                    dropout_rate=0., affineBN=True, in_shape=[3, 416, 416])
 
     if args.invert:
         model = torch.nn.DataParallel(model).cuda()
